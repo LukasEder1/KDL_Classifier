@@ -1,6 +1,6 @@
-# Interactive System for Classifying German Clinical Documents
+# KDL Classifier
 
-Unsupervised Approach for Automatic Summarization (using Keywords) of Changes between two Document Versions 
+Interactive System for Classifying German Clinical Documents based on the KDL Code System
 
 ## Introduction
 Reliable classification of clinical text documents is crucial as it can greatly benefit medical staff in categorizing and retrieving documents based on previous records. In this paper, we propose an interactive system capable for classifying German clinical texts based on the hierarchical \textit{Klinische Dokumentenklassen-Liste} (KDL) labelling scheme. KDL is a structured list of clinical document types used in the healthcare sector, for example, in the context of patient treatment in hospitals and clinics. Different individual names for medical documentation and records are used in practice, and the clinical document class list serves as a standardization tool with the goal of uniformly classifying data.
