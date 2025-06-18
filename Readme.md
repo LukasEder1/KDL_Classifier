@@ -34,6 +34,13 @@ Upgrade Pip
 pip install --upgrade pip
 ```
 
+
+## How to run
+``` bash
+streamlit run KDLClassifcationApp.py
+```
+
+
 Install requirements
 - Our Expermients were ran using Pytorch (CUDA 12.6)
 
