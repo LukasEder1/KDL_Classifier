@@ -19,7 +19,7 @@ st.set_page_config(page_title="Text Classification", page_icon="🩺", layout="w
 st.title("KDL Classifier")
 
 # KDL hierarchy
-df = pd.read_csv("kdl.csv")
+df = pd.read_csv("../kdl.csv")
 
 cls = df["display"].tolist()
 
@@ -87,13 +87,12 @@ models = {"DistilBert": "distilbert/distilbert-base-german-cased",
          "MedBert": "GerMedBERT/medbert-512",
          "MLP": ".pth"}
 
-# Used for tfidf
+# Used for tfidf    
 vectorizer = None
 lsa = None
 
 # used for transformers
 tokenizer = None
-
 
 # Used for shapley values        
 pipe = None
