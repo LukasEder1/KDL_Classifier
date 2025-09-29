@@ -19,7 +19,7 @@ st.set_page_config(page_title="Text Classification", page_icon="🩺", layout="w
 st.title("KDL Classifier")
 
 # KDL hierarchy
-df = pd.read_csv("../kdl.csv")
+df = pd.read_csv("kdl.csv")
 
 cls = df["display"].tolist()
 
