@@ -1,16 +1,25 @@
 import streamlit as st
 import pandas as pd
+from langchain_community.document_loaders import PyPDFLoader
 import plotly.express as px
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 import torch
+import tempfile
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline    
 from SlidingWindowTransformer import  *
 from streamlit_utils import *
+import seaborn as sns
 import torch
+import matplotlib.pyplot as plt
+import csv
+import shap
 from peft import PeftModel, PeftConfig
 from MlpClassification import *
-import numpy as np
 import pickle
 from lime.lime_text import LimeTextExplainer
+import os
+
+#from lime.lime_text import LimeTextExplainer
 
 # ================= Streamlit SETTINGS =======================================================
 st.set_page_config(page_title="Text Classification", page_icon="🩺", layout="wide")
@@ -19,43 +28,61 @@ st.title("KDL Classifier")
 
 # KDL hierarchy
 df = pd.read_csv("kdl.csv")
-
 cls = df["display"].tolist()
-lime_explainer = LimeTextExplainer(class_names=cls)
+st.markdown("""
+<style>
+span.Positive {
+    background-color: lightgreen;
+    padding: 2px;
+    margin: 1px;
+    border-radius: 5px;
+}
 
-# color map for all plots
-palette = px.colors.qualitative.Plotly
-lvl1_labels = df["lvl1_display"].unique()
-#lvl1_labels = [label +  for label in lvl1_displays]
+span.Negative {
+    background-color: lightcoral;
+    padding: 2px;
+    margin: 1px;
+    border-radius: 5px;
+}
 
-# If colour map > lvl1 classes wrap around
-color_map = {lvl1_labels[i]: palette[i % len(palette)] for i in range(len(lvl1_labels))}
-
-# Placeholder color for plotly
-color_map["(?)"] = "#f0f0f0"
+span.value {
+    margin-left: 2px;
+    padding-left: 5px;
+    padding-right: 3px;
+    opacity: 0.5;
+    text-align: right;
+    font-size: 0.9em;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ================= SIDEBART SETTINGS =======================================================
 st.sidebar.markdown("# Advanced Settings")
 
 with st.sidebar:
+    language = st.selectbox(
+    'Language',
+    ('de', 'en'),
+    help="""Choose the language for the KDL hierarchy
+        """)
+    #n_chunks = st.slider("Maximum #Chunks", 1, 16, 3)
     overlap = st.slider("Overlap Size", 0, 512, 128, help="1")
 
     top_k_classes = st.slider("Display TOP n Classes", 1, len(cls), 5, help="1")
     
-    
-    models_ckpt = ie = st.selectbox(
+    models_ckpt = st.selectbox(
     'Model',
-    ('DistilBert', 'MedBert'),#, 'MLP'),
+    ('DistilBert', 'MedBert'),
     help="""Choose one of the finetuned Models.
         """)
 
-    pooling_method = ie = st.selectbox(
+    pooling_method = st.selectbox(
     'Pooling Method',
     ('mean', 'max'),
     help="""How to combine chunks
         """)
     
-    export_predictions = st.toggle("Export Predictions", help="Export")
+    export_predictions = st.toggle("Export Predictions", help="1")
 
 
     # Export Folder + Config File
@@ -70,33 +97,31 @@ with st.sidebar:
     if display_predictions:
         display_chunks = st.toggle("Display Chunks", True, help="1")
 
-    # default device
     device = torch.device('cpu')
 
     if torch.cuda.is_available():
-        use_gpu = st.toggle("Use GPU", True, help=f"Available GPU: {torch.cuda.get_device_name()}")
+        use_gpu = st.toggle("Use GPU", True, help="")#, help=f"Available GPU: {torch.cuda.get_device_name()}")
         if use_gpu:
             device = torch.device('cuda')
         
     show_shapely_values = st.toggle("Display Shapley Values", False, help="Not recommonded without a GPU")
     
-    softmax_temp = st.slider("Softmax Temperature", 0.001, 2.0, 1.0, help="1")
 
+    show_lime_values = st.toggle("Display Lime Values", False, help="Not recommonded without a GPU")
+    if show_lime_values:
+        with st.expander("LIME Explanation", True):
+            use_tokens_as_lime_features = st.toggle("Use Tokens from Tokenizer as LIME Features", False, help="Otherwise use tokens from the tokenizer")
+            num_lime_features = st.slider("Number of LIME Features", 1, 200, 10, help="TOP n features to display")
+            num_lime_samples = st.slider("Number of LIME Samples", 1, 1000, 10, help="Number of samples to generate for LIME")
+            num_classes_lime = st.slider("Number of Classes to explain with LIME", 1, len(cls), 1, help="TOP n classes to explain with LIME")
+    #softmax_temp = st.slider("Softmax Temperature", 0.001, 2.0, 1.0, help="1")
+    softmax_temp = 1.0
 # Include your fine-tuned checkpoints instead
 models = {"DistilBert": "distilbert/distilbert-base-german-cased",
          "MedBert": "GerMedBERT/medbert-512",
-         "custom": "",
-         "MLP": ".pth"}
+        }
 
-# Used for tfidf    
-vectorizer = None
-lsa = None
-
-# used for transformers
 tokenizer = None
-
-# Used for shapley values        
-pipe = None
 
 # ================= MAIN  =======================================================
 
@@ -106,34 +131,37 @@ if len(uploaded_files) > 0:
     run = st.button("Run")
 else:
     st.info("Please upload a PDF file to get started.") 
+        
+pipe = None
 
 # ================= PDF Processing =======================================================
 if run:
-    if models_ckpt != "MLP": 
-        model_ckpt = models[models_ckpt]
 
-        tokenizer = AutoTokenizer.from_pretrained(model_ckpt)
-        model = AutoModelForSequenceClassification.from_pretrained(model_ckpt,
-                                                                        output_attentions=True,
-                                                                        num_labels=len(cls)).to(device)
-        
-        model.config.id2label = {i: label for i, label in enumerate(cls)}
-        model.config.label2id = {label:i for i, label in enumerate(cls)}
-    else: # MLP
-        model = SimpleMLP(1000, 512, len(cls))
-        model.eval()
+            # color map for all plots
+    palette = px.colors.qualitative.Plotly
+    lvl1_labels = df["lvl1_display"].unique()
+    #lvl1_labels = [label +  for label in lvl1_displays]
 
-        checkpoint = torch.load(models[models_ckpt], weights_only=True)
+    if language == "en":
+   
+        cls = df["display_en"].tolist()
+        lvl1_labels = df["lvl1_display_en"].unique()
+    
+    
+    color_map = {lvl1_labels[i]: palette[i % len(palette)] for i in range(len(lvl1_labels))}
 
-        model.load_state_dict(checkpoint["model_state_dict"])
-        model.to(device)
+    # Placeholder color for plotly
+    color_map["(?)"] = "#f0f0f0"
 
-        # use your own vectorizer
-        with open("vectorizer.pkl", "rb") as f:
-            vectorizer = pickle.load(f)
+    model_ckpt = models[models_ckpt]
 
-        with open("lsa.pkl", "rb") as f:
-            lsa = pickle.load(f)
+    tokenizer = AutoTokenizer.from_pretrained(model_ckpt)
+    model = AutoModelForSequenceClassification.from_pretrained(model_ckpt,
+                                                                    output_attentions=True,
+                                                                    num_labels=len(cls)).to(device)
+    
+    model.config.id2label = {i: label for i, label in enumerate(cls)}
+    model.config.label2id = {label:i for i, label in enumerate(cls)}
 
     if show_shapely_values:
        pipe = pipeline(
@@ -142,11 +170,11 @@ if run:
             tokenizer=tokenizer,
             device=device,
             return_all_scores=True
-        )
-
+            )
+        
     if export_predictions:
-        # keys and values for config.json file
         config = {
+        #    "n_chunks": n_chunks,
             "overlap": overlap,
             "top_k_classes": top_k_classes,
             "model": models_ckpt,
@@ -158,52 +186,43 @@ if run:
             "softmax_temperature": softmax_temp
         }
         
-        # creats folder `folder_name`_date  and saves config.json file
         folder_name = export_config_file(folder_name, config)
         
 
 
     if len(uploaded_files) > 0 and uploaded_files is not None:
-        # cached for export
         predictions = []
         probs = []
-
         st.markdown("<h1 style='text-align: center;'>Classification Results</h1>", unsafe_allow_html=True)
 
-        # PDF processing
         for i, uploaded_file in enumerate(uploaded_files):
             with st.spinner(f"Processing PDF {i+1} of {len(uploaded_files)} ..."):
-
-                # Read in PDF Document
+                
+                  # Read in PDF Document
                 document_content = read_pdf(uploaded_file)
 
 
+
                 # ================= Classification =======================================================
-                if models_ckpt == "DistilBert" or models_ckpt == "MedBert":
-                    inputs = tokenize_into_chunks([document_content], 
-                                        tokenizer,
-                                        overlap=overlap,
-                                        )
-                
-                    input_ids = torch.tensor(inputs["input_ids"]).to(device)
-                    attention_mask = torch.tensor(inputs["attention_mask"]).to(device)
+                inputs = tokenize_into_chunks([document_content], 
+                                    tokenizer,
+                                    overlap=overlap,
+                                    )
+            
+                input_ids = torch.tensor(inputs["input_ids"]).to(device)
+                attention_mask = torch.tensor(inputs["attention_mask"]).to(device)
 
-                    out = tokenizer.decode(inputs["input_ids"][0])
+                out = tokenizer.decode(inputs["input_ids"][0])
 
-                    # Sliding window prediction 
-                    # Check: SlidingWindowTransformer for more information
-                    all_logits, all_attentions = predict(model, input_ids, attention_mask, 512)
-                
-
-                else: # MLP
-                    # MLP prediction 
-                    # Check: MLPClassification for more information
-                    all_logits = predict_mlp(document_content, vectorizer, lsa, model)
-                
+                # Sliding window prediction 
+                # Check: SlidingWindowTransformer for more information
+                all_logits, all_attentions = predict(model, input_ids, attention_mask, 512)
+            
                 # aggregate logits from all chunks
                 aggregated_logits = pooling(all_logits, pooling_method=pooling_method)
-                
+                #aggregated_logits = all_logits[0]
                 # ================= Visualization =======================================================
+
 
                 if display_predictions:
                     # Normalize logits and convert them from decimal to percent
@@ -215,28 +234,46 @@ if run:
                                     top_k=top_k_classes,
                                     color_map=color_map,
                                     doc_name=f"{uploaded_file.name}",
-                                    kdl_df=df)
+                                    kdl_df=df,
+                                    language=language)
 
-                    
-
+                                        
                     def predict_proba(texts):
                         inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(device)
                         outputs = model(**inputs)
                         probs = torch.softmax(outputs.logits, dim=1).detach().cpu().numpy()
                         return probs
 
-                    exp = lime_explainer.explain_instance(
-                        document_content,  # limit to first 1000 chars for speed
-                        predict_proba,
-                        num_features=10,
-                        top_labels=top_k_classes,
-                        num_samples=10
-                    )
-                    
-                    plot_lime_explanation(exp)
+                    def predict_proba_mlp(texts, vectorizer=None, lsa=None, model=None):
+                        inputs = vectorizer.transform(texts)
+                        inputs = lsa.transform(inputs)
+                        inputs = torch.tensor(inputs).float().to(device)
+                        outputs = model(inputs)
+                        probs = torch.softmax(outputs, dim=1).detach().cpu().numpy()
+                        return probs
+                
 
-                    st.components.v1.html(exp.as_html(), height=800, width=800, scrolling=True)
-                    #st.plotly_chart(exp.as_pyplot_figure(), key="lime")
+                    if show_lime_values:
+                        if use_tokens_as_lime_features:
+                            tokens = tokenizer.tokenize(document_content)
+                            document_content = "|".join(tokens)
+                                    
+                            lime_explainer = LimeTextExplainer(class_names=cls, split_expression=lambda x: x.split("|"))#
+
+
+                        else:
+                            lime_explainer = LimeTextExplainer(class_names=cls, split_expression=r'[^\w.,%/]+', bow=True)
+                                                    
+                        exp = lime_explainer.explain_instance(
+                                document_content,  # limit to first 1000 chars for speed
+                                predict_proba_mlp if models_ckpt == "MLP" else predict_proba,
+                                num_features=num_lime_features,
+                                top_labels=num_classes_lime,
+                                num_samples=num_lime_samples
+                            )
+                            
+                        plot_lime_explanation(exp)
+                  
                     if display_chunks and tokenizer != None:
                         expandable_chunk_prediction(out,
                                                     tokenizer,
@@ -245,7 +282,9 @@ if run:
                                                     plot_name=str(i),
                                                     top_k=top_k_classes,
                                                     pipeline=pipe,
-                                                    kdl_df=df)
+                                                    kdl_df=df,
+                                                    language=language
+                                                    )
 
                 
                 predictions.append(cls[int(aggregated_logits.argmax(-1))])
@@ -253,13 +292,12 @@ if run:
                 
                 # ================= EXPORT FUNCTIONALITY =======================================================
 
-                # Save html files
                 if export_predictions:                
                     html_content = export_html_summary(df_preds,
                                                     entropy,
                                                     bar_fig,
                                                     tree_fig,
-                                                    styled, # custom css for the df
+                                                    styled,
                                                     probs=preds,
                                                     doc_name=f"{uploaded_file.name} -",
                                                     )
@@ -269,7 +307,6 @@ if run:
                     with open(f"{folder_name}/{file_name}.html", 'w') as f:
                         f.write(html_content)
 
-        # Save CSV file
         if export_predictions:
             
             export_data = pd.DataFrame({"document_name": [f.name.split(".pdf")[0] for f in uploaded_files],
