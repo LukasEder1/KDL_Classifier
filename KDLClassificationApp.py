@@ -147,7 +147,6 @@ if run:
         cls = df["display_en"].tolist()
         lvl1_labels = df["lvl1_display_en"].unique()
     
-    
     color_map = {lvl1_labels[i]: palette[i % len(palette)] for i in range(len(lvl1_labels))}
 
     # Placeholder color for plotly
@@ -252,6 +251,19 @@ if run:
                         probs = torch.softmax(outputs, dim=1).detach().cpu().numpy()
                         return probs
                 
+                  
+                    if display_chunks and tokenizer != None:
+                        expandable_chunk_prediction(out,
+                                                    tokenizer,
+                                                    all_logits,
+                                                    color_map=color_map,
+                                                    plot_name=str(i),
+                                                    top_k=top_k_classes,
+                                                    pipeline=pipe,
+                                                    kdl_df=df,
+                                                    language=language
+                                                    )
+
 
                     if show_lime_values:
                         if use_tokens_as_lime_features:
@@ -272,33 +284,20 @@ if run:
                                 num_samples=num_lime_samples
                             )
                             
+                        
                         plot_lime_explanation(exp)
-                  
-                    if display_chunks and tokenizer != None:
-                        expandable_chunk_prediction(out,
-                                                    tokenizer,
-                                                    all_logits,
-                                                    color_map=color_map,
-                                                    plot_name=str(i),
-                                                    top_k=top_k_classes,
-                                                    pipeline=pipe,
-                                                    kdl_df=df,
-                                                    language=language
-                                                    )
-
                 
                 predictions.append(cls[int(aggregated_logits.argmax(-1))])
                 probs.append(round(float(torch.max(torch.softmax(aggregated_logits, dim=0))), 5))
                 
-                # ================= EXPORT FUNCTIONALITY =======================================================
-
+                                # ================= EXPORT FUNCTIONALITY =======================================================
                 if export_predictions:                
                     html_content = export_html_summary(df_preds,
                                                     entropy,
                                                     bar_fig,
                                                     tree_fig,
                                                     styled,
-                                                    probs=preds,
+                                                    #probs=preds,
                                                     doc_name=f"{uploaded_file.name} -",
                                                     )
                                         
@@ -307,10 +306,10 @@ if run:
                     with open(f"{folder_name}/{file_name}.html", 'w') as f:
                         f.write(html_content)
 
-        if export_predictions:
-            
-            export_data = pd.DataFrame({"document_name": [f.name.split(".pdf")[0] for f in uploaded_files],
-                            "prediction": predictions,
-                            "probability": probs})
-            
-            export_data.to_csv(f"{folder_name}/summary.csv", index=None)
+                if export_predictions:
+                    
+                    export_data = pd.DataFrame({"document_name": [f.name.split(".pdf")[0] for f in uploaded_files],
+                                    "prediction": predictions,
+                                    "probability": probs})
+                    
+                    export_data.to_csv(f"{folder_name}/summary.csv", index=None)
