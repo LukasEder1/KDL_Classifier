@@ -151,15 +151,6 @@ if run:
     
     model.config.id2label = {i: label for i, label in enumerate(cls)}
     model.config.label2id = {label:i for i, label in enumerate(cls)}
-
-    if show_shapely_values:
-       pipe = pipeline(
-            "text-classification",
-            model=model,
-            tokenizer=tokenizer,
-            device=device,
-            return_all_scores=True
-            )
         
     if len(uploaded_files) > 0 and uploaded_files is not None:
         predictions = []
