@@ -82,14 +82,6 @@ with st.sidebar:
     help="""How to combine chunks
         """)
     
-    export_predictions = st.toggle("Export Predictions", help="1")
-
-
-    # Export Folder + Config File
-    if export_predictions:
-        folder_name = st.text_input("Output Folder Name", "predictions",
-                                   help=".csv is added automatically")
-        
     display_predictions = st.toggle("Display Predictions", True, help="1")
 
     display_chunks = False
@@ -117,8 +109,8 @@ with st.sidebar:
     #softmax_temp = st.slider("Softmax Temperature", 0.001, 2.0, 1.0, help="1")
     softmax_temp = 1.0
 # Include your fine-tuned checkpoints instead
-models = {"DistilBert": "distilbert/distilbert-base-german-cased",
-         "MedBert": "GerMedBERT/medbert-512",
+models = {"DistilBert": "distilbert/distilbert-base-german-cased-finetuned-grasc",
+         "MedBert": "Luggi/medbert-512-finetuned-grasc",
         }
 
 tokenizer = None
@@ -171,24 +163,6 @@ if run:
             return_all_scores=True
             )
         
-    if export_predictions:
-        config = {
-        #    "n_chunks": n_chunks,
-            "overlap": overlap,
-            "top_k_classes": top_k_classes,
-            "model": models_ckpt,
-            "pooling_method": pooling_method,
-            "device": str(device),
-            "display_predictions": display_predictions,
-            "display_chunks": display_chunks,
-            "show_shapely_values": show_shapely_values,
-            "softmax_temperature": softmax_temp
-        }
-        
-        folder_name = export_config_file(folder_name, config)
-        
-
-
     if len(uploaded_files) > 0 and uploaded_files is not None:
         predictions = []
         probs = []
@@ -242,15 +216,7 @@ if run:
                         outputs = model(**inputs)
                         probs = torch.softmax(outputs.logits, dim=1).detach().cpu().numpy()
                         return probs
-
-                    def predict_proba_mlp(texts, vectorizer=None, lsa=None, model=None):
-                        inputs = vectorizer.transform(texts)
-                        inputs = lsa.transform(inputs)
-                        inputs = torch.tensor(inputs).float().to(device)
-                        outputs = model(inputs)
-                        probs = torch.softmax(outputs, dim=1).detach().cpu().numpy()
-                        return probs
-                
+        
                   
                     if display_chunks and tokenizer != None:
                         expandable_chunk_prediction(out,
@@ -278,7 +244,7 @@ if run:
                                                     
                         exp = lime_explainer.explain_instance(
                                 document_content,  # limit to first 1000 chars for speed
-                                predict_proba_mlp if models_ckpt == "MLP" else predict_proba,
+                                predict_proba,
                                 num_features=num_lime_features,
                                 top_labels=num_classes_lime,
                                 num_samples=num_lime_samples
@@ -290,26 +256,3 @@ if run:
                 predictions.append(cls[int(aggregated_logits.argmax(-1))])
                 probs.append(round(float(torch.max(torch.softmax(aggregated_logits, dim=0))), 5))
                 
-                                # ================= EXPORT FUNCTIONALITY =======================================================
-                if export_predictions:                
-                    html_content = export_html_summary(df_preds,
-                                                    entropy,
-                                                    bar_fig,
-                                                    tree_fig,
-                                                    styled,
-                                                    #probs=preds,
-                                                    doc_name=f"{uploaded_file.name} -",
-                                                    )
-                                        
-                    file_name = uploaded_file.name.split(".pdf")[0]
-
-                    with open(f"{folder_name}/{file_name}.html", 'w') as f:
-                        f.write(html_content)
-
-                if export_predictions:
-                    
-                    export_data = pd.DataFrame({"document_name": [f.name.split(".pdf")[0] for f in uploaded_files],
-                                    "prediction": predictions,
-                                    "probability": probs})
-                    
-                    export_data.to_csv(f"{folder_name}/summary.csv", index=None)

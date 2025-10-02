@@ -36,11 +36,6 @@ jsonpointer==3.0.0
 jsonschema==4.24.0
 jsonschema-specifications==2025.4.1
 kiwisolver==1.4.8
-langchain==0.3.25
-langchain-community==0.3.25
-langchain-core==0.3.65
-langchain-text-splitters==0.3.8
-langsmith==0.3.45
 llvmlite==0.44.0
 MarkupSafe==3.0.2
 marshmallow==3.26.1
