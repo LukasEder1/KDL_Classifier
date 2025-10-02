@@ -16,8 +16,10 @@ from MlpClassification import *
 import pickle
 from lime.lime_text import LimeTextExplainer
 import os
+import glob
 
 #from lime.lime_text import LimeTextExplainer
+
 
 # ================= Streamlit SETTINGS =======================================================
 st.set_page_config(page_title="Text Classification", page_icon="🩺", layout="wide")
@@ -26,6 +28,8 @@ st.title("KDL Classifier")
 
 # KDL hierarchy
 df = pd.read_csv("kdl.csv")
+
+
 cls = df["display"].tolist()
 st.markdown("""
 <style>
@@ -102,7 +106,7 @@ with st.sidebar:
         with st.expander("LIME Explanation", True):
             use_tokens_as_lime_features = st.toggle("Use Tokens from Tokenizer as LIME Features", False, help="Otherwise use tokens from the tokenizer")
             num_lime_features = st.slider("Number of LIME Features", 1, 10, 10, help="TOP n features to display")
-            num_lime_samples = st.slider("Number of LIME Samples", 1, 6, 3, help="Number of samples to generate for LIME")
+            num_lime_samples = st.slider("Number of LIME Samples", 1, 3, 3, help="Number of samples to generate for LIME")
             num_classes_lime = st.slider("Number of Classes to explain with LIME", 1, 3, 1, help="TOP n classes to explain with LIME")
     #softmax_temp = st.slider("Softmax Temperature", 0.001, 2.0, 1.0, help="1")
     softmax_temp = 1.0
@@ -116,8 +120,16 @@ tokenizer = None
 # ================= MAIN  =======================================================
 
 uploaded_files = st.file_uploader("Choose a PDF file", type="pdf", accept_multiple_files=True)
+grassco_folder = "GraSCCo"
+pdf_files = sorted([f for f in glob.glob(os.path.join(grassco_folder, "*.pdf"))])
+preset_example = st.selectbox(
+    "Load Preset Example (GraSCCo)",
+    ["None"] + [os.path.basename(f) for f in pdf_files],
+    help="Select a preset PDF example from the GraSCCo folder."
+)
+
 run = False
-if len(uploaded_files) > 0:
+if len(uploaded_files) > 0 or preset_example != "None":
     run = st.button("Run")
 else:
     st.info("Please upload a PDF file to get started.") 
@@ -126,7 +138,8 @@ pipe = None
 
 # ================= PDF Processing =======================================================
 if run:
-
+    if preset_example != "None":
+        uploaded_files.append(open(os.path.join(grassco_folder, preset_example), "rb"))
             # color map for all plots
     palette = px.colors.qualitative.Plotly
     lvl1_labels = df["lvl1_display"].unique()
