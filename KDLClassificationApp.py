@@ -74,7 +74,7 @@ with st.sidebar:
     
     models_ckpt = st.selectbox(
     'Model',
-    ('DistilBert', 'MedBert'),
+    ('DistilBert'),
     help="""Choose one of the finetuned Models.
         """)
 
