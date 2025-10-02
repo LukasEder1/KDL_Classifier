@@ -1,17 +1,16 @@
 import streamlit as st
 import pandas as pd
-from langchain_community.document_loaders import PyPDFLoader
 import plotly.express as px
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 import torch
-import tempfile
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline    
 from SlidingWindowTransformer import  *
 from streamlit_utils import *
 import torch
 from peft import PeftModel, PeftConfig
 from MlpClassification import *
+import numpy as np
 import pickle
+from lime.lime_text import LimeTextExplainer
 
 # ================= Streamlit SETTINGS =======================================================
 st.set_page_config(page_title="Text Classification", page_icon="🩺", layout="wide")
@@ -22,6 +21,7 @@ st.title("KDL Classifier")
 df = pd.read_csv("kdl.csv")
 
 cls = df["display"].tolist()
+lime_explainer = LimeTextExplainer(class_names=cls)
 
 # color map for all plots
 palette = px.colors.qualitative.Plotly
@@ -85,6 +85,7 @@ with st.sidebar:
 # Include your fine-tuned checkpoints instead
 models = {"DistilBert": "distilbert/distilbert-base-german-cased",
          "MedBert": "GerMedBERT/medbert-512",
+         "custom": "",
          "MLP": ".pth"}
 
 # Used for tfidf    
@@ -141,7 +142,7 @@ if run:
             tokenizer=tokenizer,
             device=device,
             return_all_scores=True
-            )
+        )
 
     if export_predictions:
         # keys and values for config.json file
@@ -172,20 +173,9 @@ if run:
         # PDF processing
         for i, uploaded_file in enumerate(uploaded_files):
             with st.spinner(f"Processing PDF {i+1} of {len(uploaded_files)} ..."):
-                # Save the uploaded file to a temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                    tmp_file.write(uploaded_file.read())
-                    tmp_file_path = tmp_file.name
 
-                # Load PDF and extract text
-                loader = PyPDFLoader(tmp_file_path)
-                documents = loader.load()
-
-                text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-                docs = text_splitter.split_documents(documents)
-
-                # Concatenate all document chunks into a single string
-                document_content = " ".join([doc.page_content for doc in docs])
+                # Read in PDF Document
+                document_content = read_pdf(uploaded_file)
 
 
                 # ================= Classification =======================================================
@@ -226,7 +216,27 @@ if run:
                                     color_map=color_map,
                                     doc_name=f"{uploaded_file.name}",
                                     kdl_df=df)
-                        
+
+                    
+
+                    def predict_proba(texts):
+                        inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(device)
+                        outputs = model(**inputs)
+                        probs = torch.softmax(outputs.logits, dim=1).detach().cpu().numpy()
+                        return probs
+
+                    exp = lime_explainer.explain_instance(
+                        document_content,  # limit to first 1000 chars for speed
+                        predict_proba,
+                        num_features=10,
+                        top_labels=top_k_classes,
+                        num_samples=10
+                    )
+                    
+                    plot_lime_explanation(exp)
+
+                    st.components.v1.html(exp.as_html(), height=800, width=800, scrolling=True)
+                    #st.plotly_chart(exp.as_pyplot_figure(), key="lime")
                     if display_chunks and tokenizer != None:
                         expandable_chunk_prediction(out,
                                                     tokenizer,

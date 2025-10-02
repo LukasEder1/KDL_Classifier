@@ -1,6 +1,6 @@
 FROM python:3.12.2-slim
 
-WORKDIR /app
+WORKDIR .
 
 
 RUN apt-get update && apt-get install -y \

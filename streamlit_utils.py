@@ -7,7 +7,112 @@ import shap
 import os
 import json
 from datetime import datetime
+from pypdf import PdfReader
 KDL_URL = "https://simplifier.net/guide/kdl-implementierungsleitfaden-2025/Hauptseite/CodeSystem-2024?version=2025"
+
+
+def plot_lime_explanation(explainer):
+    
+    indexed_string = explainer.domain_mapper.indexed_string
+    local_explanations = explainer.local_exp
+    for label in explainer.top_labels:
+        words = []
+        values = []
+        for idx, lime_value in local_explanations[label]:
+            words.append(indexed_string.word(idx))
+            values.append(lime_value)
+        
+        df = pd.DataFrame({"word": words,
+                            "value": values})
+        
+        #df = df.set_index("word").loc[words].reset_index()
+        df["color"] = df["value"].apply(lambda x: "Negative" if x < 0 else "Positive")
+        
+        fig = px.bar(df, 
+                x="value",
+                y="word",
+                color="color",
+                orientation='h',
+                title=f"{label}",
+                category_orders={"word": words},  # force custom order
+                color_discrete_map={"Positive": "lightgreen", "Negative": "lightcoral"},
+
+        )
+
+        fig.update_layout(
+            
+            yaxis={'categoryorder':'total ascending', 'automargin': True}, 
+            )
+
+        fig.update_xaxes(
+            zeroline=True,
+            zerolinecolor="black",
+            zerolinewidth=2
+        )
+        fig.update_traces(marker=dict(cornerradius=30))
+        st.markdown(f"<h3 style='text-align: center;'>LIME Explanation for class: <b>{label}</b></h3>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; font-size:1.3vw;'><span style='background-color: lightgreen;padding: 2px;margin: 1px;border-radius: 5px;'>Positive</span> words increase the likelihood of the class<br> <span style='background-color: lightcoral;padding: 2px;margin: 1px;border-radius: 5px;'>Negative</span> words decrease it.</p>", unsafe_allow_html=True)
+                          
+        st.plotly_chart(fig)
+
+        all_words = indexed_string.as_list
+
+        html = """
+        <style>
+        span.Positive {
+            background-color: lightgreen;
+            padding: 2px;
+            margin: 1px;
+            border-radius: 5px;
+        }
+
+        span.Negative {
+            background-color: lightcoral;
+            padding: 2px;
+            margin: 1px;
+            border-radius: 5px;
+        }
+
+        span.value {
+            margin-left: 2px;
+            padding-left: 5px;
+            padding-right: 3px;
+            opacity: 0.5;
+            text-align: right;
+            font-size: 0.9em;
+        }
+        </style>
+        <div style='text-align: center; font-size:1.3vw;'>
+        """
+        for word in all_words:
+            if word in df["word"].values:
+                current = df[df["word"] == word]
+
+                word = (
+                        f"<span class='{current["color"].values[0]}'>"
+                        f"<b>{word}</b>"
+                        f"<span class='value'> {round(current["value"].values[0], 3)}</span>"
+                        f"</span>"
+                    )
+            else:
+                word = f"<span>{word}</span>" 
+            html += word + " "
+
+        st.markdown(html + "</div>", unsafe_allow_html=True)                           
+
+        
+        
+
+def read_pdf(file):
+    reader = PdfReader(file)
+
+    text = []
+
+    for page in reader.pages:
+        text.append(page.extract_text())
+    
+    return "\n".join(text)
+
 
 def export_config_file(folder_prefix, config):
     """
@@ -262,7 +367,7 @@ def expandable_chunk_prediction(txt, tokenizer, logits, plot_name, color_map, to
                                 top_k,
                                 color_map=color_map,heading_lvl=3, 
                                 kdl_df=kdl_df)
-
+                
                 if pipeline != None:
                     html = shap.plots.text(values[i,:,:], display=False)
                     st.components.v1.html(html, height=1000)
