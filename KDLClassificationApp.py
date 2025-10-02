@@ -107,7 +107,7 @@ with st.sidebar:
     #softmax_temp = st.slider("Softmax Temperature", 0.001, 2.0, 1.0, help="1")
     softmax_temp = 1.0
 # Include your fine-tuned checkpoints instead
-models = {"DistilBert": "distilbert/distilbert-base-german-cased-finetuned-grasc",
+models = {"DistilBert": "Luggi/distilbert-base-german-cased-finetuned-grasc",
          "MedBert": "Luggi/medbert-512-finetuned-grasc",
         }
 
