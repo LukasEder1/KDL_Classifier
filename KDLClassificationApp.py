@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-from langchain_community.document_loaders import PyPDFLoader
 import plotly.express as px
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 import torch
 import tempfile
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline    
