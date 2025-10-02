@@ -94,7 +94,7 @@ with st.sidebar:
         if use_gpu:
             device = torch.device('cuda')
         
-    show_shapely_values = st.toggle("Display Shapley Values", False, help="Not recommonded without a GPU")
+    #show_shapely_values = st.toggle("Display Shapley Values", False, help="Not recommonded without a GPU")
     
 
     show_lime_values = st.toggle("Display Lime Values", False, help="Not recommonded without a GPU")
@@ -102,7 +102,7 @@ with st.sidebar:
         with st.expander("LIME Explanation", True):
             use_tokens_as_lime_features = st.toggle("Use Tokens from Tokenizer as LIME Features", False, help="Otherwise use tokens from the tokenizer")
             num_lime_features = st.slider("Number of LIME Features", 1, 200, 10, help="TOP n features to display")
-            num_lime_samples = st.slider("Number of LIME Samples", 1, 1000, 10, help="Number of samples to generate for LIME")
+            num_lime_samples = st.slider("Number of LIME Samples", 1, 6, 3, help="Number of samples to generate for LIME")
             num_classes_lime = st.slider("Number of Classes to explain with LIME", 1, len(cls), 1, help="TOP n classes to explain with LIME")
     #softmax_temp = st.slider("Softmax Temperature", 0.001, 2.0, 1.0, help="1")
     softmax_temp = 1.0
